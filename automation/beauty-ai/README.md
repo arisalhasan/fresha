@@ -93,5 +93,9 @@ When a customer calls:
 ---
 
 ## Files in this folder
-- `playwright-fresha-checker.js` – slot lookup worker
+- `playwright-fresha-checker.js` – slot lookup worker (CLI test)
+- `server.js` – HTTP API for availability lookups (`/availability`)
 - `n8n-workflow-outline.json` – import-ready starter workflow structure
+- `STEP_BY_STEP.md` – exact deployment and integration checklist
+- `.env.example` – environment template
+- `package.json` – dependencies/scripts

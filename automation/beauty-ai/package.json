@@ -1,0 +1,15 @@
+{
+  "name": "beauty-ai-booking-assistant",
+  "version": "1.0.0",
+  "description": "Phone booking automation helpers for Fresha (Option B with Playwright)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "node playwright-fresha-checker.js \"$FRESHA_URL\" \"$SERVICE_NAME\""
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "playwright": "^1.52.0"
+  }
+}
