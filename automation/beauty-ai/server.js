@@ -231,6 +231,23 @@ app.get('/availability', auth, async (req, res) => {
   }
 });
 
+app.get('/debug/services', auth, async (req, res) => {
+  const url = (req.query.url || DEFAULT_FRESHA_URL).toString();
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 1800 } });
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const texts = await page.locator('button,[role="button"],a,span,div,h3,h4').allTextContents();
+    const cleaned = [...new Set(texts.map(t => (t || '').trim()).filter(Boolean))];
+    const serviceLike = cleaned.filter(t => /lash|brow|micro|facial|aesthetic|patch|infill|volume|hybrid/i.test(t)).slice(0, 200);
+    return res.json({ ok: true, count: serviceLike.length, serviceLike });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  } finally {
+    await browser.close();
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Beauty AI server listening on port ${PORT}`);
 });
