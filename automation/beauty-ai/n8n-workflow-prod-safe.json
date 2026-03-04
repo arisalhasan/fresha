@@ -1,0 +1,87 @@
+{
+  "name": "Aphrodite Beauty - Prod Safe Call Assistant",
+  "nodes": [
+    {
+      "name": "Inbound Voice Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "parameters": { "path": "voice/prod-safe", "httpMethod": "POST" }
+    },
+    {
+      "name": "Normalize Payload",
+      "type": "n8n-nodes-base.function",
+      "parameters": {
+        "functionCode": "return items.map(i => { const b = i.json.body || i.json; return { json: { timestamp: new Date().toISOString(), caller: b.caller || b.From || null, channel: b.channel || 'voice', service: b.service || 'General enquiry', datePref: b.datePref || null, wantsHuman: !!b.wantsHuman, notes: b.notes || '', status: 'new' } }; });"
+      }
+    },
+    {
+      "name": "Save Lead (Sheet)",
+      "type": "n8n-nodes-base.googleSheets",
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "leads!A:H"
+      }
+    },
+    {
+      "name": "Compose Booking SMS",
+      "type": "n8n-nodes-base.function",
+      "parameters": {
+        "functionCode": "const link='https://www.fresha.com/book-now/aphroditebeauty-zdjxrm79/services?lid=1531418&share=true&pId=1454315'; return [{json:{to:$json.caller,message:`Thanks for calling Aphrodite Beauty 💖 You can book here: ${link}. If you'd like, reply with your preferred day/time and we’ll help you book.`, caller:$json.caller,wantsHuman:$json.wantsHuman,service:$json.service,datePref:$json.datePref,notes:$json.notes}}];"
+      }
+    },
+    {
+      "name": "Send SMS (Twilio)",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{TWILIO_ACCOUNT_SID}}/Messages.json",
+        "method": "POST",
+        "authentication": "predefinedCredentialType"
+      }
+    },
+    {
+      "name": "Needs Human?",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{$json.wantsHuman}}", "operation": "isTrue" }]
+        }
+      }
+    },
+    {
+      "name": "Callback Queue (Sheet)",
+      "type": "n8n-nodes-base.googleSheets",
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "callbacks!A:F"
+      }
+    },
+    {
+      "name": "Notify Staff",
+      "type": "n8n-nodes-base.function",
+      "parameters": {
+        "functionCode": "return [{json:{message:`Callback needed:\nCaller: ${$json.caller}\nService: ${$json.service}\nPref: ${$json.datePref || '-'}\nNotes: ${$json.notes || '-'}`}}];"
+      }
+    },
+    {
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "parameters": { "respondWith": "text", "responseBody": "ok" }
+    }
+  ],
+  "connections": {
+    "Inbound Voice Webhook": { "main": [[{ "node": "Normalize Payload", "type": "main", "index": 0 }]] },
+    "Normalize Payload": { "main": [[{ "node": "Save Lead (Sheet)", "type": "main", "index": 0 }]] },
+    "Save Lead (Sheet)": { "main": [[{ "node": "Compose Booking SMS", "type": "main", "index": 0 }]] },
+    "Compose Booking SMS": { "main": [[{ "node": "Send SMS (Twilio)", "type": "main", "index": 0 }]] },
+    "Send SMS (Twilio)": { "main": [[{ "node": "Needs Human?", "type": "main", "index": 0 }]] },
+    "Needs Human?": {
+      "main": [
+        [{ "node": "Callback Queue (Sheet)", "type": "main", "index": 0 }],
+        [{ "node": "Webhook Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Callback Queue (Sheet)": { "main": [[{ "node": "Notify Staff", "type": "main", "index": 0 }]] },
+    "Notify Staff": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
+  }
+}
