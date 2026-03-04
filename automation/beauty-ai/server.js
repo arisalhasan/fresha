@@ -156,31 +156,49 @@ async function lookupSlots({ url, serviceName }) {
       }
     }
 
-    // If a date rail exists, click the first available date
-    for (const s of ['button[aria-label*="day" i]', 'button:has-text("Today")', '[role="tab"]']) {
-      const d = page.locator(s).first();
-      if (await d.count()) {
-        await d.click({ timeout: 1200 }).catch(() => {});
-        break;
+    // If a date rail exists, click first few available dates to force slot render
+    const dateSelectors = ['button[aria-label*="day" i]', 'button[aria-label*="date" i]', '[role="tab"]'];
+    let dateClicked = false;
+    for (const ds of dateSelectors) {
+      const dates = page.locator(ds);
+      const dc = await dates.count();
+      for (let i = 0; i < Math.min(dc, 5); i++) {
+        const d = dates.nth(i);
+        if (await d.isVisible().catch(() => false)) {
+          await d.click({ timeout: 1200, force: true }).catch(() => {});
+          dateClicked = true;
+          await page.waitForTimeout(600);
+          break;
+        }
       }
+      if (dateClicked) break;
     }
 
-    await page.waitForTimeout(1800);
+    await page.waitForTimeout(2200);
 
     let slots = [];
+    const slotTextRegex = /\b\d{1,2}:\d{2}\b/;
+
+    // 1) Primary button-like selectors
     for (const sel of [
       'button[data-testid*="time"]',
+      'button[aria-label*=":"]',
       'button:has-text(":")',
       '[role="button"]:has-text(":")'
     ]) {
       const texts = await page.locator(sel).allTextContents();
-      const parsed = texts
-        .map((t) => t.trim())
-        .filter((t) => /\b\d{1,2}:\d{2}\b/.test(t));
+      const parsed = texts.map((t) => t.trim()).filter((t) => slotTextRegex.test(t));
       if (parsed.length) {
-        slots = [...new Set(parsed)].slice(0, 8);
+        slots = [...new Set(parsed)].slice(0, 10);
         break;
       }
+    }
+
+    // 2) Fallback: scan visible page text and extract time-like tokens near booking section
+    if (!slots.length) {
+      const bodyText = (await page.textContent('body')) || '';
+      const found = bodyText.match(/\b\d{1,2}:\d{2}\b/g) || [];
+      slots = [...new Set(found)].slice(0, 10);
     }
 
     const body = (await page.textContent('body')) || '';
