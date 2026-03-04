@@ -22,14 +22,26 @@ async function lookupSlots({ url, serviceName }) {
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    for (const s of ['button:has-text("Accept")', 'button:has-text("Allow all")']) {
+    for (const s of ['button:has-text("Accept")', 'button:has-text("Allow all")', 'button:has-text("Accept all")']) {
       const b = page.locator(s).first();
-      if (await b.count()) await b.click({ timeout: 1200 }).catch(() => {});
+      if (await b.count()) await b.click({ timeout: 1500 }).catch(() => {});
+    }
+
+    // Dismiss/close floating banners that can intercept clicks (best effort)
+    for (const s of [
+      'button[aria-label*="close" i]',
+      'button:has-text("Close")',
+      '.Banner_banner__3Qcnr button',
+      '.Banner_banner__3Qcnr [role="button"]'
+    ]) {
+      const b = page.locator(s).first();
+      if (await b.count()) await b.click({ timeout: 1000 }).catch(() => {});
     }
 
     const service = page.locator(`text=${serviceName}`).first();
     await service.waitFor({ timeout: 15000 });
-    await service.click({ timeout: 5000 });
+    await service.scrollIntoViewIfNeeded();
+    await service.click({ timeout: 7000, force: true });
 
     await page.waitForTimeout(1500);
 
