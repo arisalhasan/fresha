@@ -88,21 +88,41 @@ async function lookupSlots({ url, serviceName }) {
     // 2) Fallback: fuzzy service name contains matching words
     if (!clicked) {
       const wanted = norm(serviceName);
-      const candidates = await page.locator('span,div,h3,h4').allTextContents();
+      const candidates = await page.locator('span,div,h3,h4,button,[role="button"]').allTextContents();
       const best = candidates
         .map((t) => t.trim())
         .filter(Boolean)
-        .find((t) => norm(t).includes(wanted) || wanted.includes(norm(t)));
+        .find((t) => {
+          const nt = norm(t);
+          return nt.includes(wanted) || wanted.includes(nt) || wanted.split(' ').every(w => nt.includes(w));
+        });
       if (best) {
         const fuzzyCandidates = page.locator(`text=${best}`);
         const fuzzyCount = await fuzzyCandidates.count();
-        for (let i = 0; i < Math.min(fuzzyCount, 8); i++) {
+        for (let i = 0; i < Math.min(fuzzyCount, 12); i++) {
           const fuzzy = fuzzyCandidates.nth(i);
           if (await fuzzy.isVisible().catch(() => false)) {
             await fuzzy.click({ timeout: 7000, force: true });
             clicked = true;
             break;
           }
+        }
+      }
+    }
+
+    // 2b) Last-resort fuzzy click: find visible button-like element containing all words
+    if (!clicked) {
+      const wantedWords = norm(serviceName).split(' ').filter(Boolean);
+      const buttonish = page.locator('button,[role="button"],a,div,span');
+      const count = await buttonish.count();
+      for (let i = 0; i < Math.min(count, 200); i++) {
+        const el = buttonish.nth(i);
+        const txt = norm(await el.textContent().catch(() => ''));
+        if (!txt) continue;
+        if (wantedWords.every(w => txt.includes(w)) && await el.isVisible().catch(() => false)) {
+          await el.click({ timeout: 4000, force: true }).catch(() => {});
+          clicked = true;
+          break;
         }
       }
     }
