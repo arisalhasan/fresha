@@ -1,0 +1,128 @@
+{
+  "name": "Aphrodite Beauty - Voice Booking Assistant (Outline)",
+  "nodes": [
+    {
+      "name": "Inbound Voice Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "parameters": {
+        "path": "voice/incoming",
+        "httpMethod": "POST"
+      }
+    },
+    {
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.function",
+      "parameters": {
+        "functionCode": "return items.map(i => { const b = i.json.body || i.json; return { json: { caller: b.From || b.caller || null, service: b.service || null, datePref: b.datePref || null, channel: b.channel || 'voice' } }; });"
+      }
+    },
+    {
+      "name": "Validate Service",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.service}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Availability Lookup (Playwright API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://YOUR-PLAYWRIGHT-SERVICE/availability",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            { "name": "service", "value": "={{$json.service}}" },
+            { "name": "days", "value": "14" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Slots Found?",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{($json.slots || []).length}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Compose Response",
+      "type": "n8n-nodes-base.function",
+      "parameters": {
+        "functionCode": "const slots = ($json.slots || []).slice(0,3); const price = $json.price || 'price shown in booking link'; return [{ json: { caller: $json.caller, msg: `Great news — for ${$json.serviceName || 'that treatment'}, I can offer ${slots.join(', ')}. Price: ${price}. Book now: https://www.fresha.com/book-now/aphroditebeauty-zdjxrm79/services?lid=1531418&share=true&pId=1454315` } }];"
+      }
+    },
+    {
+      "name": "Send SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{TWILIO_ACCOUNT_SID}}/Messages.json",
+        "method": "POST",
+        "authentication": "predefinedCredentialType"
+      }
+    },
+    {
+      "name": "Fallback Callback Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "callbacks!A:D"
+      }
+    },
+    {
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "ok"
+      }
+    }
+  ],
+  "connections": {
+    "Inbound Voice Webhook": {
+      "main": [[{ "node": "Normalize Input", "type": "main", "index": 0 }]]
+    },
+    "Normalize Input": {
+      "main": [[{ "node": "Validate Service", "type": "main", "index": 0 }]]
+    },
+    "Validate Service": {
+      "main": [
+        [{ "node": "Availability Lookup (Playwright API)", "type": "main", "index": 0 }],
+        [{ "node": "Fallback Callback Queue", "type": "main", "index": 0 }]
+      ]
+    },
+    "Availability Lookup (Playwright API)": {
+      "main": [[{ "node": "Slots Found?", "type": "main", "index": 0 }]]
+    },
+    "Slots Found?": {
+      "main": [
+        [{ "node": "Compose Response", "type": "main", "index": 0 }],
+        [{ "node": "Fallback Callback Queue", "type": "main", "index": 0 }]
+      ]
+    },
+    "Compose Response": {
+      "main": [[{ "node": "Send SMS", "type": "main", "index": 0 }]]
+    },
+    "Send SMS": {
+      "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]]
+    },
+    "Fallback Callback Queue": {
+      "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]]
+    }
+  }
+}
