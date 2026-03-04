@@ -8,6 +8,22 @@ const PORT = Number(process.env.PORT || 3000);
 const API_KEY = process.env.API_KEY || '';
 const DEFAULT_FRESHA_URL = process.env.FRESHA_URL || 'https://www.fresha.com/book-now/aphroditebeauty-zdjxrm79/services?lid=1531418&share=true&pId=1454315';
 
+const CATEGORY_HINTS = {
+  'brow lamination': 'Lash and Brow Lamination',
+  'powder brows': 'Lash and Brow Lamination',
+  'brow tinting': 'Lash and Brow Lamination',
+  'classic set natural hybrid': 'Eyelash Extensions',
+  'angel lashes': 'Eyelash Extensions',
+  'hybrid set': 'Eyelash Extensions',
+  'infill': 'Eyelash Extensions',
+  'mini infill': 'Eyelash Extensions',
+  'volume kim k style wispy': 'Eyelash Extensions',
+  'russian volume': 'Eyelash Extensions',
+  'mega volume': 'Eyelash Extensions',
+  'lash removal': 'Eyelash Extensions',
+  'patch test': 'Eyelash Extensions'
+};
+
 function auth(req, res, next) {
   if (!API_KEY) return next();
   const key = req.header('x-api-key');
@@ -38,6 +54,22 @@ async function lookupSlots({ url, serviceName }) {
     ]) {
       const b = page.locator(s).first();
       if (await b.count()) await b.click({ timeout: 1000 }).catch(() => {});
+    }
+
+    // Prefer Professional tab/category area if present
+    for (const s of ['button:has-text("Professional")', '[role="tab"]:has-text("Professional")']) {
+      const t = page.locator(s).first();
+      if (await t.count()) await t.click({ timeout: 1200 }).catch(() => {});
+    }
+
+    // Open likely category first when known
+    const wantedNorm = norm(serviceName);
+    for (const [k, cat] of Object.entries(CATEGORY_HINTS)) {
+      if (wantedNorm.includes(k) || k.includes(wantedNorm)) {
+        const catBtn = page.locator(`text=${cat}`).first();
+        if (await catBtn.count()) await catBtn.click({ timeout: 2000, force: true }).catch(() => {});
+        break;
+      }
     }
 
     // 1) Try exact text match first (visible candidates only)
@@ -76,8 +108,25 @@ async function lookupSlots({ url, serviceName }) {
     }
 
     if (!clicked) {
-      throw new Error(`Service not found on page: ${serviceName}`);
+      // Last fallback: click through known categories and retry exact match
+      for (const cat of ['Lash and Brow Lamination', 'Eyelash Extensions', 'Microblading / Permanent Make-Up', 'Aesthetics / Facials']) {
+        const catBtn = page.locator(`text=${cat}`).first();
+        if (await catBtn.count()) await catBtn.click({ timeout: 1800, force: true }).catch(() => {});
+        const retry = page.locator(`text=${serviceName}`);
+        const retryCount = await retry.count();
+        for (let i = 0; i < Math.min(retryCount, 8); i++) {
+          const r = retry.nth(i);
+          if (await r.isVisible().catch(() => false)) {
+            await r.click({ timeout: 5000, force: true });
+            clicked = true;
+            break;
+          }
+        }
+        if (clicked) break;
+      }
     }
+
+    if (!clicked) throw new Error(`Service not found on page: ${serviceName}`);
 
     // Some flows require an extra continue/next click to reach slots
     for (const s of ['button:has-text("Next")', 'button:has-text("Continue")', 'button:has-text("Book")']) {
