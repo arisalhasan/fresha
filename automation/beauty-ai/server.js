@@ -19,6 +19,8 @@ async function lookupSlots({ url, serviceName }) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 1800 } });
 
+  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
@@ -38,12 +40,53 @@ async function lookupSlots({ url, serviceName }) {
       if (await b.count()) await b.click({ timeout: 1000 }).catch(() => {});
     }
 
+    // 1) Try exact text match first
+    let clicked = false;
     const service = page.locator(`text=${serviceName}`).first();
-    await service.waitFor({ timeout: 15000 });
-    await service.scrollIntoViewIfNeeded();
-    await service.click({ timeout: 7000, force: true });
+    if (await service.count()) {
+      await service.scrollIntoViewIfNeeded();
+      await service.click({ timeout: 7000, force: true });
+      clicked = true;
+    }
 
-    await page.waitForTimeout(1500);
+    // 2) Fallback: fuzzy service name contains matching words
+    if (!clicked) {
+      const wanted = norm(serviceName);
+      const candidates = await page.locator('span,div,h3,h4').allTextContents();
+      const best = candidates
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .find((t) => norm(t).includes(wanted) || wanted.includes(norm(t)));
+      if (best) {
+        const fuzzy = page.locator(`text=${best}`).first();
+        await fuzzy.scrollIntoViewIfNeeded();
+        await fuzzy.click({ timeout: 7000, force: true });
+        clicked = true;
+      }
+    }
+
+    if (!clicked) {
+      throw new Error(`Service not found on page: ${serviceName}`);
+    }
+
+    // Some flows require an extra continue/next click to reach slots
+    for (const s of ['button:has-text("Next")', 'button:has-text("Continue")', 'button:has-text("Book")']) {
+      const b = page.locator(s).first();
+      if (await b.count()) {
+        await b.click({ timeout: 1200 }).catch(() => {});
+      }
+    }
+
+    // If a date rail exists, click the first available date
+    for (const s of ['button[aria-label*="day" i]', 'button:has-text("Today")', '[role="tab"]']) {
+      const d = page.locator(s).first();
+      if (await d.count()) {
+        await d.click({ timeout: 1200 }).catch(() => {});
+        break;
+      }
+    }
+
+    await page.waitForTimeout(1800);
 
     let slots = [];
     for (const sel of [
