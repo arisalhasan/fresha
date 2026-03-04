@@ -40,13 +40,17 @@ async function lookupSlots({ url, serviceName }) {
       if (await b.count()) await b.click({ timeout: 1000 }).catch(() => {});
     }
 
-    // 1) Try exact text match first
+    // 1) Try exact text match first (visible candidates only)
     let clicked = false;
-    const service = page.locator(`text=${serviceName}`).first();
-    if (await service.count()) {
-      await service.scrollIntoViewIfNeeded();
-      await service.click({ timeout: 7000, force: true });
-      clicked = true;
+    const serviceCandidates = page.locator(`text=${serviceName}`);
+    const exactCount = await serviceCandidates.count();
+    for (let i = 0; i < Math.min(exactCount, 8); i++) {
+      const candidate = serviceCandidates.nth(i);
+      if (await candidate.isVisible().catch(() => false)) {
+        await candidate.click({ timeout: 7000, force: true });
+        clicked = true;
+        break;
+      }
     }
 
     // 2) Fallback: fuzzy service name contains matching words
@@ -58,10 +62,16 @@ async function lookupSlots({ url, serviceName }) {
         .filter(Boolean)
         .find((t) => norm(t).includes(wanted) || wanted.includes(norm(t)));
       if (best) {
-        const fuzzy = page.locator(`text=${best}`).first();
-        await fuzzy.scrollIntoViewIfNeeded();
-        await fuzzy.click({ timeout: 7000, force: true });
-        clicked = true;
+        const fuzzyCandidates = page.locator(`text=${best}`);
+        const fuzzyCount = await fuzzyCandidates.count();
+        for (let i = 0; i < Math.min(fuzzyCount, 8); i++) {
+          const fuzzy = fuzzyCandidates.nth(i);
+          if (await fuzzy.isVisible().catch(() => false)) {
+            await fuzzy.click({ timeout: 7000, force: true });
+            clicked = true;
+            break;
+          }
+        }
       }
     }
 
